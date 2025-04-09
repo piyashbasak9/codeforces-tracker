@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { FaTrash, FaSync, FaPlus, FaUser, FaCrown, FaChevronRight, FaTimes } from 'react-icons/fa';
+import { FaTrash, FaSync, FaPlus, FaUser, FaCrown, FaChevronRight, FaTimes, FaTrophy } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 import './App.css';
 
@@ -9,8 +9,7 @@ function App() {
   const [newHandle, setNewHandle] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showAddPanel, setShowAddPanel] = useState(false);
-  const [showDeletePanel, setShowDeletePanel] = useState(false);
+  const [activePanel, setActivePanel] = useState(null); // 'add' or 'delete'
   const [deleteConfirmation, setDeleteConfirmation] = useState({
     show: false,
     handle: null,
@@ -22,7 +21,20 @@ function App() {
     try {
       setLoading(true);
       const response = await axios.get('http://localhost:5000/api/users');
-      setUsers(response.data);
+      const usersWithMaxRating = await Promise.all(
+        response.data.map(async (user) => {
+          try {
+            const ratingResponse = await axios.get(
+              `https://codeforces.com/api/user.rating?handle=${user.handle}`
+            );
+            const maxRating = Math.max(...ratingResponse.data.result.map(r => r.newRating), user.rating);
+            return { ...user, maxRating };
+          } catch {
+            return { ...user, maxRating: user.rating };
+          }
+        })
+      );
+      setUsers(usersWithMaxRating.sort((a, b) => b.rating - a.rating));
       setError('');
     } catch (err) {
       setError('Failed to fetch users');
@@ -40,10 +52,22 @@ function App() {
       const response = await axios.post('http://localhost:5000/api/users', {
         handle: newHandle.trim()
       });
-      setUsers([...users, response.data].sort((a, b) => b.rating - a.rating));
+      
+      // Fetch max rating for new user
+      let maxRating = response.data.rating;
+      try {
+        const ratingResponse = await axios.get(
+          `https://codeforces.com/api/user.rating?handle=${newHandle.trim()}`
+        );
+        maxRating = Math.max(...ratingResponse.data.result.map(r => r.newRating), response.data.rating);
+      } catch (e) {
+        console.error("Couldn't fetch rating history", e);
+      }
+
+      setUsers([...users, { ...response.data, maxRating }].sort((a, b) => b.rating - a.rating));
       setNewHandle('');
       setError('');
-      setShowAddPanel(false);
+      setActivePanel(null);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to add user');
       console.error(err);
@@ -71,8 +95,7 @@ function App() {
     try {
       setLoading(true);
       await axios.get('http://localhost:5000/api/update-all');
-      const response = await axios.get('http://localhost:5000/api/users');
-      setUsers(response.data);
+      await fetchUsers(); // Re-fetch to update max ratings too
       setError('');
     } catch (err) {
       setError('Failed to update users');
@@ -89,6 +112,10 @@ function App() {
       username: user.handle,
       rating: user.rating
     });
+  };
+
+  const togglePanel = (panel) => {
+    setActivePanel(activePanel === panel ? null : panel);
   };
 
   useEffect(() => {
@@ -118,17 +145,17 @@ function App() {
   return (
     <div className="app">
       {/* Add User Panel */}
-      <div className={`control-panel add-panel ${showAddPanel ? 'open' : ''}`}>
+      <div className={`control-panel add-panel ${activePanel === 'add' ? 'open' : ''}`}>
         <button 
           className="panel-toggle"
-          onClick={() => setShowAddPanel(!showAddPanel)}
+          onClick={() => togglePanel('add')}
         >
-          <FaChevronRight className={`chevron ${showAddPanel ? 'open' : ''}`} />
+          <FaChevronRight className={`chevron ${activePanel === 'add' ? 'open' : ''}`} />
           <span className="toggle-label">Add User</span>
         </button>
         
         <AnimatePresence>
-          {showAddPanel && (
+          {activePanel === 'add' && (
             <motion.div 
               className="panel-content"
               initial={{ opacity: 0, x: 50 }}
@@ -138,7 +165,7 @@ function App() {
             >
               <button 
                 className="close-panel"
-                onClick={() => setShowAddPanel(false)}
+                onClick={() => setActivePanel(null)}
               >
                 <FaTimes />
               </button>
@@ -170,17 +197,17 @@ function App() {
       </div>
 
       {/* Delete User Panel */}
-      <div className={`control-panel delete-panel ${showDeletePanel ? 'open' : ''}`}>
+      <div className={`control-panel delete-panel ${activePanel === 'delete' ? 'open' : ''}`}>
         <button 
           className="panel-toggle"
-          onClick={() => setShowDeletePanel(!showDeletePanel)}
+          onClick={() => togglePanel('delete')}
         >
-          <FaChevronRight className={`chevron ${showDeletePanel ? 'open' : ''}`} />
+          <FaChevronRight className={`chevron ${activePanel === 'delete' ? 'open' : ''}`} />
           <span className="toggle-label">Manage Users</span>
         </button>
         
         <AnimatePresence>
-          {showDeletePanel && (
+          {activePanel === 'delete' && (
             <motion.div 
               className="panel-content"
               initial={{ opacity: 0, x: 50 }}
@@ -190,7 +217,7 @@ function App() {
             >
               <button 
                 className="close-panel"
-                onClick={() => setShowDeletePanel(false)}
+                onClick={() => setActivePanel(null)}
               >
                 <FaTimes />
               </button>
@@ -208,9 +235,14 @@ function App() {
                         >
                           {user.handle}
                         </span>
-                        <span className="user-rating">
-                          {user.rating} ({user.rank})
-                        </span>
+                        <div className="user-ratings">
+                          <span className="user-rating">
+                            Current: {user.rating}
+                          </span>
+                          <span className="user-max-rating">
+                            <FaTrophy /> Max: {user.maxRating || user.rating}
+                          </span>
+                        </div>
                       </div>
                       <button
                         onClick={() => showDeleteConfirmation(user)}
@@ -325,6 +357,9 @@ function App() {
                 <div className="info-details">
                   <div className="rating" style={{ color: getRatingColor(user.rating) }}>
                     <span className="label">Rating:</span> {user.rating}
+                  </div>
+                  <div className="max-rating" style={{ color: getRatingColor(user.maxRating || user.rating) }}>
+                    <span className="label">Max:</span> {user.maxRating || user.rating} <FaTrophy size={12} />
                   </div>
                   <div className="rank" style={{ color: getRatingColor(user.rating) }}>
                     <span className="label">Rank:</span> {user.rank}
