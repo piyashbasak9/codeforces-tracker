@@ -9,7 +9,7 @@ function App() {
   const [newHandle, setNewHandle] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [activePanel, setActivePanel] = useState(null); // 'add' or 'delete'
+  const [activePanel, setActivePanel] = useState(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState({
     show: false,
     handle: null,
@@ -21,20 +21,42 @@ function App() {
     try {
       setLoading(true);
       const response = await axios.get('http://localhost:5000/api/users');
-      const usersWithMaxRating = await Promise.all(
+      const usersWithFullData = await Promise.all(
         response.data.map(async (user) => {
           try {
             const ratingResponse = await axios.get(
               `https://codeforces.com/api/user.rating?handle=${user.handle}`
             );
-            const maxRating = Math.max(...ratingResponse.data.result.map(r => r.newRating), user.rating);
-            return { ...user, maxRating };
+            const contests = ratingResponse.data.result;
+            let maxRating = user.rating;
+            let maxRank = user.rank;
+            
+            contests.forEach(contest => {
+              if (contest.newRating > maxRating) {
+                maxRating = contest.newRating;
+                maxRank = contest.rank;
+              }
+            });
+            
+            return { 
+              ...user, 
+              maxRating, 
+              maxRank,
+              currentRating: user.rating,
+              currentRank: user.rank
+            };
           } catch {
-            return { ...user, maxRating: user.rating };
+            return { 
+              ...user, 
+              maxRating: user.rating, 
+              maxRank: user.rank,
+              currentRating: user.rating,
+              currentRank: user.rank
+            };
           }
         })
       );
-      setUsers(usersWithMaxRating.sort((a, b) => b.rating - a.rating));
+      setUsers(usersWithFullData.sort((a, b) => b.currentRating - a.currentRating));
       setError('');
     } catch (err) {
       setError('Failed to fetch users');
@@ -53,18 +75,31 @@ function App() {
         handle: newHandle.trim()
       });
       
-      // Fetch max rating for new user
-      let maxRating = response.data.rating;
+      let userData = {
+        ...response.data,
+        maxRating: response.data.rating,
+        maxRank: response.data.rank,
+        currentRating: response.data.rating,
+        currentRank: response.data.rank
+      };
+      
       try {
         const ratingResponse = await axios.get(
           `https://codeforces.com/api/user.rating?handle=${newHandle.trim()}`
         );
-        maxRating = Math.max(...ratingResponse.data.result.map(r => r.newRating), response.data.rating);
+        const contests = ratingResponse.data.result;
+        
+        contests.forEach(contest => {
+          if (contest.newRating > userData.maxRating) {
+            userData.maxRating = contest.newRating;
+            userData.maxRank = contest.rank;
+          }
+        });
       } catch (e) {
         console.error("Couldn't fetch rating history", e);
       }
 
-      setUsers([...users, { ...response.data, maxRating }].sort((a, b) => b.rating - a.rating));
+      setUsers([...users, userData].sort((a, b) => b.currentRating - a.currentRating));
       setNewHandle('');
       setError('');
       setActivePanel(null);
@@ -95,7 +130,7 @@ function App() {
     try {
       setLoading(true);
       await axios.get('http://localhost:5000/api/update-all');
-      await fetchUsers(); // Re-fetch to update max ratings too
+      await fetchUsers();
       setError('');
     } catch (err) {
       setError('Failed to update users');
@@ -110,7 +145,7 @@ function App() {
       show: true,
       handle: user.handle,
       username: user.handle,
-      rating: user.rating
+      rating: user.currentRating
     });
   };
 
@@ -137,6 +172,7 @@ function App() {
   };
 
   const getRankIcon = (rank) => {
+    if (!rank) return null;
     if (rank.includes('grandmaster')) return <FaCrown color="#ff0000" />;
     if (rank.includes('master')) return <FaCrown color="#ff8c00" />;
     return null;
@@ -144,7 +180,79 @@ function App() {
 
   return (
     <div className="app">
-      {/* Add User Panel */}
+      {/* Delete User Panel - Now positioned above Add User Panel */}
+      <div className={`control-panel delete-panel ${activePanel === 'delete' ? 'open' : ''}`}>
+        <button 
+          className="panel-toggle"
+          onClick={() => togglePanel('delete')}
+        >
+          <FaChevronRight className={`chevron ${activePanel === 'delete' ? 'open' : ''}`} />
+          <span className="toggle-label">Manage Users</span>
+        </button>
+        
+        <AnimatePresence>
+          {activePanel === 'delete' && (
+            <motion.div 
+              className="panel-content"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 50 }}
+              transition={{ duration: 0.3 }}
+            >
+              <button 
+                className="close-panel"
+                onClick={() => setActivePanel(null)}
+              >
+                <FaTimes />
+              </button>
+              
+              <h3>Manage Tracked Users</h3>
+              
+              <div className="user-list-scroll">
+                {users.length > 0 ? (
+                  users.map((user) => (
+                    <div key={user.handle} className="user-list-item">
+                      <div className="user-info">
+                        <span 
+                          className="user-handle"
+                          style={{ color: getRatingColor(user.currentRating) }}
+                        >
+                          {user.handle}
+                        </span>
+                        <div className="user-ratings">
+                          <div className="rating-row">
+                            <span className="rating-label">Current:</span>
+                            <span style={{ color: getRatingColor(user.currentRating) }}>
+                              {user.currentRating} ({user.currentRank})
+                            </span>
+                          </div>
+                          <div className="rating-row">
+                            <span className="rating-label">Max:</span>
+                            <span style={{ color: getRatingColor(user.maxRating) }}>
+                              {user.maxRating} ({user.maxRank}) <FaTrophy size={12} />
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => showDeleteConfirmation(user)}
+                        className="delete-btn"
+                        disabled={loading}
+                      >
+                        <FaTrash />
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="empty-message">No users to display</div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Add User Panel - Positioned below Manage Users Panel */}
       <div className={`control-panel add-panel ${activePanel === 'add' ? 'open' : ''}`}>
         <button 
           className="panel-toggle"
@@ -196,73 +304,6 @@ function App() {
         </AnimatePresence>
       </div>
 
-      {/* Delete User Panel */}
-      <div className={`control-panel delete-panel ${activePanel === 'delete' ? 'open' : ''}`}>
-        <button 
-          className="panel-toggle"
-          onClick={() => togglePanel('delete')}
-        >
-          <FaChevronRight className={`chevron ${activePanel === 'delete' ? 'open' : ''}`} />
-          <span className="toggle-label">Manage Users</span>
-        </button>
-        
-        <AnimatePresence>
-          {activePanel === 'delete' && (
-            <motion.div 
-              className="panel-content"
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 50 }}
-              transition={{ duration: 0.3 }}
-            >
-              <button 
-                className="close-panel"
-                onClick={() => setActivePanel(null)}
-              >
-                <FaTimes />
-              </button>
-              
-              <h3>Manage Tracked Users</h3>
-              
-              <div className="user-list-scroll">
-                {users.length > 0 ? (
-                  users.map((user) => (
-                    <div key={user.handle} className="user-list-item">
-                      <div className="user-info">
-                        <span 
-                          className="user-handle"
-                          style={{ color: getRatingColor(user.rating) }}
-                        >
-                          {user.handle}
-                        </span>
-                        <div className="user-ratings">
-                          <span className="user-rating">
-                            Current: {user.rating}
-                          </span>
-                          <span className="user-max-rating">
-                            <FaTrophy /> Max: {user.maxRating || user.rating}
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => showDeleteConfirmation(user)}
-                        className="delete-btn"
-                        disabled={loading}
-                      >
-                        <FaTrash />
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="empty-message">No users to display</div>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Delete Confirmation Dialog */}
       {deleteConfirmation.show && (
         <div className="confirmation-overlay">
           <div className="confirmation-dialog">
@@ -334,9 +375,9 @@ function App() {
               <div className="user-avatar">
                 <div 
                   className="avatar-circle"
-                  style={{ borderColor: getRatingColor(user.rating) }}
+                  style={{ borderColor: getRatingColor(user.currentRating) }}
                 >
-                  <FaUser size={24} color={getRatingColor(user.rating)} />
+                  <FaUser size={24} color={getRatingColor(user.currentRating)} />
                 </div>
               </div>
               
@@ -346,23 +387,27 @@ function App() {
                     href={`https://codeforces.com/profile/${user.handle}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ color: getRatingColor(user.rating) }}
+                    style={{ color: getRatingColor(user.currentRating) }}
                     className="user-handle"
                   >
                     {user.handle}
-                    {getRankIcon(user.rank)}
+                    {getRankIcon(user.currentRank)}
                   </a>
                 </div>
                 
                 <div className="info-details">
-                  <div className="rating" style={{ color: getRatingColor(user.rating) }}>
-                    <span className="label">Rating:</span> {user.rating}
+                  <div className="detail-group">
+                    <span className="detail-label">Current:</span>
+                    <span style={{ color: getRatingColor(user.currentRating) }}>
+                      {user.currentRating} ({user.currentRank})
+                    </span>
                   </div>
-                  <div className="max-rating" style={{ color: getRatingColor(user.maxRating || user.rating) }}>
-                    <span className="label">Max:</span> {user.maxRating || user.rating} <FaTrophy size={12} />
-                  </div>
-                  <div className="rank" style={{ color: getRatingColor(user.rating) }}>
-                    <span className="label">Rank:</span> {user.rank}
+                  <div className="detail-group">
+                    <span className="detail-label">Max:</span>
+                    <span style={{ color: getRatingColor(user.maxRating) }}>
+                      {user.maxRating} ({user.maxRank}) <FaTrophy size={12} /> 
+                      {/* ({user.maxRank}) there it's not work properly  */}
+                    </span>
                   </div>
                 </div>
                 

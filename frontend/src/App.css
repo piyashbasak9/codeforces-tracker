@@ -685,3 +685,74 @@ body {
   flex: 1;
   min-width: 0;
 }
+
+
+
+
+
+
+
+
+
+/* Add these new styles to your existing CSS */
+
+/* Panel Positioning */
+.control-panel.delete-panel {
+  top: 20px;
+}
+
+.control-panel.add-panel {
+  top: 80px;
+}
+
+/* Rating Display Styles */
+.user-ratings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+
+.rating-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.rating-label {
+  color: var(--text-secondary);
+  min-width: 50px;
+}
+
+.detail-group {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.detail-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* User Card Layout */
+.info-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+/* User List Item in Manage Panel */
+.user-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  gap: 1rem;
+}
+
+.user-list-item .user-info {
+  flex: 1;
+  min-width: 0;
+}
