@@ -11,6 +11,12 @@ function App() {
   const [error, setError] = useState('');
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [showDeletePanel, setShowDeletePanel] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState({
+    show: false,
+    handle: null,
+    username: null,
+    rating: null
+  });
 
   const fetchUsers = async () => {
     try {
@@ -20,20 +26,6 @@ function App() {
       setError('');
     } catch (err) {
       setError('Failed to fetch users');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteUser = async (handle) => {
-    try {
-      setLoading(true);
-      await axios.delete(`http://localhost:5000/api/users/${handle}`);
-      setUsers(users.filter(user => user.handle !== handle));
-      setError('');
-    } catch (err) {
-      setError('Failed to delete user');
       console.error(err);
     } finally {
       setLoading(false);
@@ -60,7 +52,20 @@ function App() {
     }
   };
 
- 
+  const deleteUser = async (handle) => {
+    try {
+      setLoading(true);
+      await axios.delete(`http://localhost:5000/api/users/${handle}`);
+      setUsers(users.filter(user => user.handle !== handle));
+      setError('');
+      setDeleteConfirmation({ show: false, handle: null });
+    } catch (err) {
+      setError('Failed to delete user');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const updateAllUsers = async () => {
     try {
@@ -75,6 +80,15 @@ function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const showDeleteConfirmation = (user) => {
+    setDeleteConfirmation({
+      show: true,
+      handle: user.handle,
+      username: user.handle,
+      rating: user.rating
+    });
   };
 
   useEffect(() => {
@@ -103,67 +117,6 @@ function App() {
 
   return (
     <div className="app">
-      {/* Delete User Panel */}
-      <div className={`control-panel delete-panel ${showDeletePanel ? 'open' : ''}`}>
-        <button 
-          className="panel-toggle"
-          onClick={() => setShowDeletePanel(!showDeletePanel)}
-        >
-          <FaChevronRight className={`chevron ${showDeletePanel ? 'open' : ''}`} />
-          <span className="toggle-label">Manage Users</span>
-        </button>
-        
-        <AnimatePresence>
-          {showDeletePanel && (
-            <motion.div 
-              className="panel-content"
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 50 }}
-              transition={{ duration: 0.3 }}
-            >
-              <button 
-                className="close-panel"
-                onClick={() => setShowDeletePanel(false)}
-              >
-                <FaTimes />
-              </button>
-              
-              <h3>Manage Tracked Users</h3>
-              
-              <div className="user-list-scroll">
-                {users.length > 0 ? (
-                  users.map((user) => (
-                    <div key={user.handle} className="user-list-item">
-                      <div className="user-info">
-                        <span 
-                          className="user-handle"
-                          style={{ color: getRatingColor(user.rating) }}
-                        >
-                          {user.handle}
-                        </span>
-                        <span className="user-rating">
-                          {user.rating} ({user.rank})
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => deleteUser(user.handle)}
-                        className="delete-btn"
-                        disabled={loading}
-                      >
-                        <FaTrash />
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="empty-message">No users to display</div>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
       {/* Add User Panel */}
       <div className={`control-panel add-panel ${showAddPanel ? 'open' : ''}`}>
         <button 
@@ -216,7 +169,95 @@ function App() {
         </AnimatePresence>
       </div>
 
-      
+      {/* Delete User Panel */}
+      <div className={`control-panel delete-panel ${showDeletePanel ? 'open' : ''}`}>
+        <button 
+          className="panel-toggle"
+          onClick={() => setShowDeletePanel(!showDeletePanel)}
+        >
+          <FaChevronRight className={`chevron ${showDeletePanel ? 'open' : ''}`} />
+          <span className="toggle-label">Manage Users</span>
+        </button>
+        
+        <AnimatePresence>
+          {showDeletePanel && (
+            <motion.div 
+              className="panel-content"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 50 }}
+              transition={{ duration: 0.3 }}
+            >
+              <button 
+                className="close-panel"
+                onClick={() => setShowDeletePanel(false)}
+              >
+                <FaTimes />
+              </button>
+              
+              <h3>Manage Tracked Users</h3>
+              
+              <div className="user-list-scroll">
+                {users.length > 0 ? (
+                  users.map((user) => (
+                    <div key={user.handle} className="user-list-item">
+                      <div className="user-info">
+                        <span 
+                          className="user-handle"
+                          style={{ color: getRatingColor(user.rating) }}
+                        >
+                          {user.handle}
+                        </span>
+                        <span className="user-rating">
+                          {user.rating} ({user.rank})
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => showDeleteConfirmation(user)}
+                        className="delete-btn"
+                        disabled={loading}
+                      >
+                        <FaTrash />
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="empty-message">No users to display</div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirmation.show && (
+        <div className="confirmation-overlay">
+          <div className="confirmation-dialog">
+            <h3>Confirm Deletion</h3>
+            <p>
+              Are you sure you want to delete <strong>{deleteConfirmation.username}</strong> 
+              {deleteConfirmation.rating ? ` (Rating: ${deleteConfirmation.rating})` : ''}?
+            </p>
+            <div className="confirmation-buttons">
+              <button 
+                onClick={() => setDeleteConfirmation({ show: false, handle: null })}
+                className="cancel-btn"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => deleteUser(deleteConfirmation.handle)}
+                className="confirm-btn"
+                disabled={loading}
+              >
+                {loading ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <header className="header">
         <h1>
